@@ -127,7 +127,6 @@
 
 
 
-
 import os
 import re
 from typing import List
@@ -137,109 +136,55 @@ from src.adaptive_chunker import AdaptiveChunker
 from src.embeddings import EmbeddingModel
 from src.retriever import Retriever
 from src.qa_model import QAModel
-from src.pdf_highlighter import PDFHighlighter
 
 
 class DocumentPipeline:
     def __init__(self):
-        print("🚀 Initializing RAG Pipeline (Extractive, Colab-safe)...")
+        print("🚀 Initializing RAG Pipeline (Hybrid mode)...")
 
         self.loader = DocumentLoader()
         self.chunker = AdaptiveChunker()
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
-
-        # ✅ Extractive-only QA (DistilBERT)
         self.qa = QAModel()
 
-        self.highlighter = PDFHighlighter()
-
-        self.current_doc = None
-        self.current_text = ""
         self.chunks: List[str] = []
         self.index_built = False
 
-    # ================= DOCUMENT UPLOAD ================= #
+    # ---------------- Document Upload ----------------
     def upload_document(self, file_path: str):
         print(f"📂 Loading document: {file_path}")
-        self.current_doc = file_path
 
-        text, metadata = self.loader.load_document(file_path)
-        self.current_text = text
-
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else None
-        chunk_size = self.chunker.calculate_chunk_size(text, file_size)
-
+        text, _ = self.loader.load_document(file_path)
+        chunk_size = self.chunker.calculate_chunk_size(text, None)
         self.chunks = self.chunker.chunk_text(text, chunk_size)
 
-        if self.chunks:
-            embeddings = self.embedder.embed_chunks(self.chunks)
-            self.retriever.build_index(self.chunks, embeddings)
-            self.index_built = True
+        embeddings = self.embedder.embed_chunks(self.chunks)
+        self.retriever.build_index(self.chunks, embeddings)
 
-        return {
-            "chunks": len(self.chunks),
-            "chunk_size": chunk_size,
-            "metadata": metadata,
-        }
+        self.index_built = True
+        print(f"✅ Document indexed with {len(self.chunks)} chunks")
 
-    # ================= CHAT ================= #
+    # ---------------- Chat ----------------
     def chat(self, question: str):
         if not self.index_built:
-            return "❌ Please upload a document first.", [], {}
+            return "Upload a document first", [], {}
 
-        # 1️⃣ Retrieve relevant chunks
-        relevant_chunks, _ = self.retriever.get_relevant_chunks(
-            question, top_k=5
-        )
+        relevant_chunks, _ = self.retriever.get_relevant_chunks(question, top_k=5)
+        context = "\n\n".join(relevant_chunks[:2])[:2000]
 
-        if not relevant_chunks:
-            return "⚠️ Answer not found in the document.", [], {}
-
-        # 2️⃣ Keyword overlap filtering
-        question_words = set(question.lower().split())
-        filtered_chunks = [
-            c for c in relevant_chunks
-            if question_words.intersection(c.lower().split())
-        ]
-
-        if not filtered_chunks:
-            filtered_chunks = relevant_chunks[:2]
-
-        # 3️⃣ Build context
-        context = "\n\n".join(filtered_chunks[:2])[:2000]
         q = question.lower()
 
-        # 4️⃣ Factual questions → extractive
-        factual_keywords = ["phone", "number", "email", "name", "date", "contact"]
+        # 🔹 FACTUAL → Extractive
+        factual_keywords = [
+            "name", "email", "phone", "number",
+            "date", "degree", "college", "skill"
+        ]
 
         if any(k in q for k in factual_keywords):
             answer = self.qa.extract_answer(context, question)
+            return answer, relevant_chunks, {"model": "extractive"}
 
-            # Regex fallback
-            phone_pattern = r"\+?\d[\d\s\-]{7,}\d"
-            email_pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-
-            if "phone" in q:
-                m = re.search(phone_pattern, context)
-                if m:
-                    return m.group(), filtered_chunks, {"model": "regex"}
-
-            if "email" in q:
-                m = re.search(email_pattern, context)
-                if m:
-                    return m.group(), filtered_chunks, {"model": "regex"}
-
-            if answer:
-                return answer, filtered_chunks, {"model": "extractive"}
-
-        # 5️⃣ Non-factual → extractive fallback
+        # 🔹 CONCEPTUAL → Generative
         answer = self.qa.generate_answer(context, question)
-        return answer, filtered_chunks, {"model": "extractive"}
-
-    # ================= PDF HIGHLIGHT ================= #
-    def highlight_keywords(self, keywords: str):
-        if not self.current_doc or not self.current_doc.endswith(".pdf"):
-            return None, [], [], ["Only PDF files supported"]
-
-        return self.highlighter.highlight_pdf(self.current_doc, keywords)
+        return answer, relevant_chunks, {"model": "generative"}
