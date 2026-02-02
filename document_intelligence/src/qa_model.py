@@ -71,73 +71,30 @@
 
 
 
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline
 import torch
 
 
 class QAModel:
     def __init__(self):
-        device = 0 if torch.cuda.is_available() else -1
+        print("⚡ Loading Extractive QA model (DistilBERT)")
 
-        # -------------------------------
-        # Extractive QA (FACTUAL)
-        # -------------------------------
-        print("⚡ Loading Extractive QA model (DistilBERT)...")
-        self.extractive_qa = pipeline(
+        device_id = 0 if torch.cuda.is_available() else -1
+
+        self.qa_pipeline = pipeline(
             "question-answering",
             model="distilbert-base-cased-distilled-squad",
-            device=device
+            device=device_id
         )
 
-        # -------------------------------
-        # Generative QA (CONCEPTUAL)
-        # -------------------------------
-        print("🤖 Loading Generative QA model (Flan-T5)...")
-        self.gen_tokenizer = AutoTokenizer.from_pretrained(
-            "google/flan-t5-small"
-        )
-        self.gen_model = AutoModelForSeq2SeqLM.from_pretrained(
-            "google/flan-t5-small"
-        ).to("cuda" if torch.cuda.is_available() else "cpu")
+        print("✅ Extractive QA Model Loaded")
 
-        print("✅ Hybrid QA Models Loaded")
-
-    # -------- Extractive --------
-    def extract_answer(self, context, question):
+    def answer(self, context, question):
         try:
-            result = self.extractive_qa(
+            result = self.qa_pipeline(
                 question=question,
                 context=context[:2000]
             )
-            return result.get("answer", "").strip()
+            return result.get("answer", "⚠️ Answer not found")
         except Exception:
-            return ""
-
-    # -------- Generative --------
-    def generate_answer(self, context, question):
-        prompt = f"""
-Answer the question using ONLY the document below.
-
-Document:
-{context}
-
-Question:
-{question}
-"""
-
-        inputs = self.gen_tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=512
-        ).to(self.gen_model.device)
-
-        outputs = self.gen_model.generate(
-            **inputs,
-            max_new_tokens=150
-        )
-
-        return self.gen_tokenizer.decode(
-            outputs[0],
-            skip_special_tokens=True
-        ).strip()
+            return "⚠️ Answer not found"

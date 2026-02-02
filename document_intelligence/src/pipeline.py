@@ -126,9 +126,7 @@
 
 
 
-
 import os
-import re
 from typing import List
 
 from src.document_loader import DocumentLoader
@@ -140,7 +138,7 @@ from src.qa_model import QAModel
 
 class DocumentPipeline:
     def __init__(self):
-        print("🚀 Initializing RAG Pipeline (Hybrid mode)...")
+        print("🚀 Initializing RAG Pipeline (Office-safe)")
 
         self.loader = DocumentLoader()
         self.chunker = AdaptiveChunker()
@@ -151,40 +149,26 @@ class DocumentPipeline:
         self.chunks: List[str] = []
         self.index_built = False
 
-    # ---------------- Document Upload ----------------
     def upload_document(self, file_path: str):
-        print(f"📂 Loading document: {file_path}")
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
 
         text, _ = self.loader.load_document(file_path)
-        chunk_size = self.chunker.calculate_chunk_size(text, None)
+
+        chunk_size = self.chunker.calculate_chunk_size(text, os.path.getsize(file_path))
         self.chunks = self.chunker.chunk_text(text, chunk_size)
 
         embeddings = self.embedder.embed_chunks(self.chunks)
         self.retriever.build_index(self.chunks, embeddings)
-
         self.index_built = True
-        print(f"✅ Document indexed with {len(self.chunks)} chunks")
 
-    # ---------------- Chat ----------------
+        return len(self.chunks)
+
     def chat(self, question: str):
         if not self.index_built:
-            return "Upload a document first", [], {}
+            return "Upload a document first"
 
-        relevant_chunks, _ = self.retriever.get_relevant_chunks(question, top_k=5)
-        context = "\n\n".join(relevant_chunks[:2])[:2000]
+        chunks, _ = self.retriever.get_relevant_chunks(question, top_k=3)
+        context = "\n\n".join(chunks)
 
-        q = question.lower()
-
-        # 🔹 FACTUAL → Extractive
-        factual_keywords = [
-            "name", "email", "phone", "number",
-            "date", "degree", "college", "skill"
-        ]
-
-        if any(k in q for k in factual_keywords):
-            answer = self.qa.extract_answer(context, question)
-            return answer, relevant_chunks, {"model": "extractive"}
-
-        # 🔹 CONCEPTUAL → Generative
-        answer = self.qa.generate_answer(context, question)
-        return answer, relevant_chunks, {"model": "generative"}
+        return self.qa.answer(context, question)
