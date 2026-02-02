@@ -129,8 +129,6 @@
 
 
 
-
-
 import os
 import re
 from typing import List
@@ -150,10 +148,7 @@ class DocumentPipeline:
         self.chunker = AdaptiveChunker()
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
-
-        # 🔥 FIX HERE
-        self.qa = QAModel()
-
+        self.qa = QAModel()  # ✅ COLAB SAFE
         self.highlighter = PDFHighlighter()
 
         self.current_doc = None
@@ -185,7 +180,7 @@ class DocumentPipeline:
             "metadata": metadata,
         }
 
-    # ================= HYBRID CHAT ================= #
+    # ================= CHAT ================= #
     def chat(self, question: str):
         if not self.index_built:
             return "❌ Please upload a document first.", [], {}
@@ -229,7 +224,7 @@ class DocumentPipeline:
                 return answer, filtered_chunks, {"model": "extractive"}
 
         answer = self.qa.generate_answer(context, question)
-        return answer, filtered_chunks, {"model": "generative"}
+        return answer, filtered_chunks, {"model": "extractive"}
 
     # ================= PDF HIGHLIGHT ================= #
     def highlight_keywords(self, keywords: str):

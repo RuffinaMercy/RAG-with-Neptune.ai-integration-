@@ -73,8 +73,6 @@
 
 
 
-
-
 from transformers import pipeline
 import torch
 
@@ -98,8 +96,9 @@ class QAModel:
                 context=context[:2000]
             )
             return result.get("answer", "")
-        except:
+        except Exception:
             return ""
 
     def generate_answer(self, context, question):
+        # Colab-safe fallback
         return "⚠️ Generative model disabled in Colab"
