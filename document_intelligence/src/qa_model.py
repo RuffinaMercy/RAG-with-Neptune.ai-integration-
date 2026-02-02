@@ -71,14 +71,13 @@
 
 
 
-
 from transformers import pipeline
 import torch
 
 
 class QAModel:
     def __init__(self):
-        print("⚡ Loading Extractive QA model ONLY (Colab-safe)")
+        print("⚡ Loading Extractive QA model (DistilBERT only – Colab safe)")
 
         device_id = 0 if torch.cuda.is_available() else -1
 
@@ -88,16 +87,18 @@ class QAModel:
             device=device_id
         )
 
+        print("✅ QA Model Loaded Successfully")
+
     def extract_answer(self, context, question):
         try:
             result = self.extractive_qa(
                 question=question,
                 context=context[:2000]
             )
-            return result.get("answer", "")
+            return result.get("answer", "").strip()
         except Exception:
             return ""
 
     def generate_answer(self, context, question):
-        # 🚫 No generative model in Colab
-        return "⚠️ Generative answering disabled (extractive-only mode)"
+        # No generative model in Colab
+        return "⚠️ Answer not found in the document."
