@@ -128,7 +128,6 @@
 
 
 
-
 import os
 import re
 from typing import List
@@ -143,12 +142,16 @@ from src.pdf_highlighter import PDFHighlighter
 
 class DocumentPipeline:
     def __init__(self):
-        print("🚀 Initializing Hybrid RAG Pipeline...")
+        print("🚀 Initializing RAG Pipeline (Extractive, Colab-safe)...")
+
         self.loader = DocumentLoader()
         self.chunker = AdaptiveChunker()
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
-        self.qa = QAModel()  # ✅ COLAB SAFE
+
+        # ✅ Extractive-only QA (DistilBERT)
+        self.qa = QAModel()
+
         self.highlighter = PDFHighlighter()
 
         self.current_doc = None
@@ -185,11 +188,15 @@ class DocumentPipeline:
         if not self.index_built:
             return "❌ Please upload a document first.", [], {}
 
-        relevant_chunks, scores = self.retriever.get_relevant_chunks(question, top_k=5)
+        # 1️⃣ Retrieve relevant chunks
+        relevant_chunks, _ = self.retriever.get_relevant_chunks(
+            question, top_k=5
+        )
 
         if not relevant_chunks:
             return "⚠️ Answer not found in the document.", [], {}
 
+        # 2️⃣ Keyword overlap filtering
         question_words = set(question.lower().split())
         filtered_chunks = [
             c for c in relevant_chunks
@@ -199,14 +206,17 @@ class DocumentPipeline:
         if not filtered_chunks:
             filtered_chunks = relevant_chunks[:2]
 
+        # 3️⃣ Build context
         context = "\n\n".join(filtered_chunks[:2])[:2000]
         q = question.lower()
 
+        # 4️⃣ Factual questions → extractive
         factual_keywords = ["phone", "number", "email", "name", "date", "contact"]
 
         if any(k in q for k in factual_keywords):
             answer = self.qa.extract_answer(context, question)
 
+            # Regex fallback
             phone_pattern = r"\+?\d[\d\s\-]{7,}\d"
             email_pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 
@@ -223,6 +233,7 @@ class DocumentPipeline:
             if answer:
                 return answer, filtered_chunks, {"model": "extractive"}
 
+        # 5️⃣ Non-factual → extractive fallback
         answer = self.qa.generate_answer(context, question)
         return answer, filtered_chunks, {"model": "extractive"}
 
