@@ -17,3 +17,9 @@ __pycache__/
 
 # Model / cache folders
 .cache/
+
+# Large models
+models/
+document_intelligence/models/
+*.safetensors
+*.bin
