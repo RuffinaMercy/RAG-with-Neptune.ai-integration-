@@ -9,8 +9,8 @@ MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "data"
 
 # # Model configuration
-# MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
-# LOCAL_MODEL_PATH = MODELS_DIR / "phi-3"
+MODEL_NAME = "microsoft/phi-3-mini-4k-instruct"
+LOCAL_MODEL_PATH = MODELS_DIR / "phi-3"
 
 # Embedding model
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
